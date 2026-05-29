@@ -14,6 +14,20 @@ function sessionFromRound(round: string): number {
   return m ? Number(m[1]) : 1;
 }
 
+/**
+ * The category/round dropdown values are objects like
+ * `{ 'Category' : 'FUNNY CAR', 'Round' : 'Q1' }`. The dropdown *label*
+ * ("FUNNY CAR Q1") includes the round, so it can't be mapped directly — pull
+ * the bare category name out of the value instead.
+ */
+export function portalCategoryName(value: string): string {
+  return /'Category'\s*:\s*'([^']*)'/.exec(value ?? "")?.[1]?.trim() ?? "";
+}
+
+export function portalRound(value: string): string {
+  return /'Round'\s*:\s*'([^']*)'/.exec(value ?? "")?.[1]?.trim() ?? "";
+}
+
 /** Convert a scraped grid row (portal column names) into a NewRun. */
 export function rowToRun(
   row: Record<string, string>,

@@ -4,7 +4,7 @@ import {
   type PortalOption,
   type ScrapeResultsResult,
 } from "../lib/functions.ts";
-import { rowToRun } from "../lib/results.ts";
+import { rowToRun, portalCategoryName } from "../lib/results.ts";
 import { categoryToCode } from "../lib/classes.ts";
 import { upsertRuns } from "../lib/store.ts";
 import type { EventDoc } from "../lib/types.ts";
@@ -118,10 +118,9 @@ export function ResultsPanel({ eventId, event }: Props) {
 
   async function importRuns() {
     if (!data?.grid) return;
-    const catLabel =
-      data.categories.find((c) => c.value === category)?.label ?? "";
+    const fallbackCategory = portalCategoryName(category);
     const runs = data.grid.rows
-      .map((r) => rowToRun(r, catLabel))
+      .map((r) => rowToRun(r, fallbackCategory))
       .filter((r): r is NonNullable<typeof r> => r !== null);
     if (runs.length === 0) {
       setError("No rows mapped to a known class (check the category).");
@@ -140,7 +139,8 @@ export function ResultsPanel({ eventId, event }: Props) {
   }
 
   const catLabel = data?.categories.find((c) => c.value === category)?.label ?? "";
-  const mappedCode = catLabel ? categoryToCode(catLabel) : undefined;
+  const catName = portalCategoryName(category);
+  const mappedCode = catName ? categoryToCode(catName) : undefined;
 
   return (
     <div className="space-y-5">
