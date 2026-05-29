@@ -31,6 +31,8 @@ export interface SeqCompetitor {
   driverName: string;
   /** 1-based points/seed rank within the class (stable across sessions). */
   order: number;
+  /** 1-based qualifying rank for this session (1 = quickest on the basis ET). */
+  qpos?: number;
 }
 
 export interface Pairing {
@@ -59,8 +61,6 @@ export interface SeqRun {
 }
 
 export const STRICT_ALTERNATION = new Set(["TF", "FC", "PS", "PSM"]);
-
-const opposite = (l: Lane): Lane => (l === "L" ? "R" : "L");
 
 function seedCompare(a: EntryDoc, b: EntryDoc): number {
   if (a.seed != null && b.seed != null) return a.seed - b.seed;
@@ -160,35 +160,6 @@ function sessionBasis(
   return { label: `Q${s - 1}`, relevant: (r) => r.session === s - 1 };
 }
 
-/** Consecutive pairing (non-strict classes): quickest pair runs last. */
-function buildPatternPairings(
-  order: SeqCompetitor[],
-  firstLane: Lane,
-): Pairing[] {
-  const n = order.length;
-  const built: Pairing[] = [];
-  for (let p = 0; p * 2 + 1 < n; p++) {
-    const a = order[2 * p];
-    const b = order[2 * p + 1];
-    built.push({
-      pair: 0,
-      left: firstLane === "L" ? a : b,
-      right: firstLane === "L" ? b : a,
-      bye: false,
-    });
-  }
-  if (n % 2 === 1) {
-    const solo = order[n - 1];
-    built.push({
-      pair: 0,
-      left: firstLane === "L" ? solo : null,
-      right: firstLane === "L" ? null : solo,
-      bye: true,
-    });
-  }
-  return built.reverse().map((pp, i) => ({ ...pp, pair: i + 1 }));
-}
-
 export function generateSequence(
   entries: EntryDoc[],
   runs: SeqRun[],
@@ -203,11 +174,7 @@ export function generateSequence(
   } = opts;
   const strict = STRICT_ALTERNATION.has(classCode);
   const pattern = resolveRotation(group, sessions, conditionalThird);
-  const q1 = orderEntries(entries);
-
-  // Fixed lane groups for strict alternation (Q1 points parity).
-  const groupA = q1.filter((_, i) => i % 2 === 0); // includes the points leader
-  const groupB = q1.filter((_, i) => i % 2 === 1);
+  const base = orderEntries(entries);
 
   const plans: SessionPlan[] = [];
 
@@ -222,58 +189,44 @@ export function generateSequence(
       if (nm && maps.byName.has(nm)) return maps.byName.get(nm);
       return undefined;
     };
-    // Lower metric = quicker. Q1 uses points rank; later sessions use ET.
+    // Lower metric = quicker. Q1 uses points; later sessions use the basis ET.
     const metric = (c: SeqCompetitor): number =>
       s === 1 ? c.order : etOf(c) ?? Infinity;
-    const sortByMetric = (g: SeqCompetitor[]) =>
-      [...g].sort((a, b) => metric(a) - metric(b) || a.order - b.order);
 
-    let pairings: Pairing[];
-    let firstLane: Lane;
+    // Rank the whole field 1..N (1 = quickest / best on the basis).
+    const ranked: SeqCompetitor[] = [...base]
+      .sort((a, b) => metric(a) - metric(b) || a.order - b.order)
+      .map((c, i) => ({ ...c, qpos: i + 1 }));
 
-    if (strict) {
-      const laneA: Lane = s % 2 === 1 ? q1LeaderLane : opposite(q1LeaderLane);
-      const laneB = opposite(laneA);
-      const ga = sortByMetric(groupA);
-      const gb = sortByMetric(groupB);
-      const m = Math.min(ga.length, gb.length);
+    // The quicker car of each pair takes the "first lane"; strict-alternation
+    // classes anchor that to the Q1 leader lane (default R), others follow the
+    // class lane pattern for the session.
+    const firstLane: Lane = strict ? q1LeaderLane : pattern[s - 1] ?? "L";
 
-      const built: { left: SeqCompetitor; right: SeqCompetitor; metric: number }[] =
-        [];
-      for (let i = 0; i < m; i++) {
-        const a = ga[i];
-        const b = gb[i];
-        built.push({
-          left: laneA === "L" ? a : b,
-          right: laneA === "L" ? b : a,
-          metric: Math.min(metric(a), metric(b)),
-        });
-      }
-      // Quickest pair runs last.
-      built.sort((x, y) => x.metric - y.metric).reverse();
-
-      const leftover =
-        ga.length > m ? { car: ga[m], lane: laneA } : gb.length > m ? { car: gb[m], lane: laneB } : null;
-
-      pairings = [];
-      let pairNo = 1;
-      if (leftover) {
-        pairings.push({
-          pair: pairNo++,
-          left: leftover.lane === "L" ? leftover.car : null,
-          right: leftover.lane === "L" ? null : leftover.car,
-          bye: true,
-        });
-      }
-      for (const p of built) {
-        pairings.push({ pair: pairNo++, left: p.left, right: p.right, bye: false });
-      }
-      firstLane = laneA;
-    } else {
-      firstLane = pattern[s - 1] ?? "L";
-      const order = sortByMetric(q1);
-      pairings = buildPatternPairings(order, firstLane);
+    // Pair consecutively by rank: (#1,#2), (#3,#4) … so the quickest two are a
+    // pair. Build best-first, then reverse so the quickest pair runs LAST and
+    // the slowest pair (or the bye) runs first.
+    const built: Pairing[] = [];
+    for (let k = 0; k * 2 + 1 < ranked.length; k++) {
+      const quick = ranked[2 * k];
+      const slow = ranked[2 * k + 1];
+      built.push({
+        pair: 0,
+        left: firstLane === "L" ? quick : slow,
+        right: firstLane === "L" ? slow : quick,
+        bye: false,
+      });
     }
+    if (ranked.length % 2 === 1) {
+      const solo = ranked[ranked.length - 1];
+      built.push({
+        pair: 0,
+        left: firstLane === "L" ? solo : null,
+        right: firstLane === "L" ? null : solo,
+        bye: true,
+      });
+    }
+    const pairings = built.reverse().map((p, i) => ({ ...p, pair: i + 1 }));
 
     plans.push({ session: s, firstLane, basis: basis.label, pairings });
   }
