@@ -8,7 +8,7 @@ import {
   renameEvent,
   subscribeEvents,
 } from "../lib/store.ts";
-import { NHRA_2025_SCHEDULE, SCHEDULE_BY_CODE } from "../lib/schedule.ts";
+import { NHRA_SCHEDULE, SCHEDULE_BY_CODE } from "../lib/schedule.ts";
 import type { EventDoc } from "../lib/types.ts";
 
 function formatStamp(stamp: EventDoc["updatedAt"]): string {
@@ -131,7 +131,7 @@ export function Dashboard() {
           >
             <label className="mb-3 block">
               <span className="mb-1 block text-xs text-slate-400">
-                Pick from 2025 schedule (optional)
+                Pick from {currentYear} schedule (optional)
               </span>
               <select
                 value={SCHEDULE_BY_CODE[eventCode] ? eventCode : ""}
@@ -139,7 +139,7 @@ export function Dashboard() {
                 className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
               >
                 <option value="">— Custom event —</option>
-                {NHRA_2025_SCHEDULE.map((s) => (
+                {NHRA_SCHEDULE.map((s) => (
                   <option key={s.code} value={s.code}>
                     {s.code} · {s.name}
                   </option>

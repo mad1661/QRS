@@ -6,32 +6,33 @@ export interface ScheduledEvent {
 }
 
 /**
- * The 2025 NHRA Mission Foods Drag Racing Series schedule, from the QRS
- * workbook's EVENTS tab. Used as a convenience picker when creating events;
- * the name/code remain freely editable.
+ * Current-season NHRA Mission Foods Drag Racing Series schedule (2026, the
+ * 75th-anniversary, 20-event season). Used as a convenience picker when
+ * creating events; the name/code remain freely editable. Event codes follow
+ * the workbook's "NN-XXn" convention (sequence number + venue abbreviation).
  */
-export const NHRA_2025_SCHEDULE: readonly ScheduledEvent[] = [
+export const NHRA_SCHEDULE: readonly ScheduledEvent[] = [
   { code: "01-GF1", name: "AMALIE Motor Oil NHRA Gatornationals" },
-  { code: "02-PC1", name: "Lucas Oil NHRA Winternationals" },
-  { code: "03-PA1", name: "NHRA Arizona Nationals" },
-  { code: "04-LN1", name: "NHRA Four-Wide Nationals (Las Vegas)" },
-  { code: "05-CN1", name: "NHRA Four-Wide Nationals (Charlotte)" },
-  { code: "06-CI1", name: "Gerber Collision & Glass Route 66 NHRA Nationals" },
-  { code: "07-NH1", name: "NHRA New England Nationals" },
-  { code: "08-BT1", name: "Super Grip NHRA Thunder Valley Nationals" },
-  { code: "09-RV1", name: "NHRA Virginia Nationals" },
+  { code: "02-PA1", name: "FMP NHRA Arizona Nationals presented by NGK Spark Plugs" },
+  { code: "03-PC1", name: "Lucas Oil NHRA Winternationals" },
+  { code: "04-CN1", name: "NHRA Four-Wide Nationals (Charlotte)" },
+  { code: "05-AG1", name: "NHRA Southern Nationals" },
+  { code: "06-CI1", name: "Gerber Collision & Glass Route 66 NHRA Nationals presented by PEAK" },
+  { code: "07-MD1", name: "NHRA Potomac Nationals presented by JEGS" },
+  { code: "08-NH1", name: "NHRA New England Nationals presented by bproauto" },
+  { code: "09-BT1", name: "Super Grip NHRA Thunder Valley Nationals" },
   { code: "10-NO1", name: "Summit Racing Equipment NHRA Nationals" },
-  { code: "11-SW1", name: "Muckleshoot Casino Resort NHRA Northwest Nationals" },
-  { code: "12-SC1", name: "DENSO NHRA Sonoma Nationals" },
-  { code: "13-BM1", name: "Lucas Oil NHRA Nationals" },
+  { code: "11-SC1", name: "DENSO NHRA Sonoma Nationals" },
+  { code: "12-SW1", name: "Muckleshoot Casino Resort NHRA Northwest Nationals" },
+  { code: "13-BM1", name: "NHRA Nationals (Brainerd)" },
   { code: "14-II1", name: "Cornwell Quality Tools NHRA U.S. Nationals" },
-  { code: "15-RP1", name: "Reading NHRA Nationals" },
-  { code: "16-CN2", name: "NHRA 4-Wide Carolina Nationals" },
-  { code: "17-MI1", name: "NHRA Midwest Nationals" },
+  { code: "15-MI1", name: "NHRA Great Lakes Nationals" },
+  { code: "16-RK1", name: "NHRA Nationals at The Rock" },
+  { code: "17-MW1", name: "NAPA Auto Parts NHRA Midwest Nationals" },
   { code: "18-DT1", name: "Texas NHRA FallNationals" },
-  { code: "19-LN2", name: "NHRA Nevada Nationals" },
+  { code: "19-LN1", name: "NHRA Nevada Nationals" },
   { code: "20-PC2", name: "IN-N-OUT BURGER NHRA Finals" },
 ];
 
 export const SCHEDULE_BY_CODE: Record<string, ScheduledEvent> =
-  Object.fromEntries(NHRA_2025_SCHEDULE.map((e) => [e.code, e]));
+  Object.fromEntries(NHRA_SCHEDULE.map((e) => [e.code, e]));
