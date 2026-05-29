@@ -8,6 +8,7 @@ import {
   renameEvent,
   subscribeEvents,
 } from "../lib/store.ts";
+import { NHRA_2025_SCHEDULE, SCHEDULE_BY_CODE } from "../lib/schedule.ts";
 import type { EventDoc } from "../lib/types.ts";
 
 function formatStamp(stamp: EventDoc["updatedAt"]): string {
@@ -45,6 +46,12 @@ export function Dashboard() {
   const [name, setName] = useState("");
   const [eventCode, setEventCode] = useState("");
   const [year, setYear] = useState(currentYear);
+
+  function pickScheduled(code: string) {
+    setEventCode(code);
+    const sched = SCHEDULE_BY_CODE[code];
+    if (sched) setName(sched.name);
+  }
 
   const grouped = useMemo(() => {
     const byYear = new Map<number, EventDoc[]>();
@@ -120,34 +127,52 @@ export function Dashboard() {
         {showNew && (
           <form
             onSubmit={handleCreate}
-            className="mb-6 grid gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 sm:grid-cols-[1fr_140px_120px_auto]"
+            className="mb-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-5"
           >
-            <input
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Event name (e.g. NHRA Gatornationals)"
-              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
-            />
-            <input
-              value={eventCode}
-              onChange={(e) => setEventCode(e.target.value)}
-              placeholder="Code (01-GF1)"
-              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
-            />
-            <input
-              type="number"
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
-            />
-            <button
-              type="submit"
-              disabled={busy || !name.trim()}
-              className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500 disabled:opacity-50"
-            >
-              Create
-            </button>
+            <label className="mb-3 block">
+              <span className="mb-1 block text-xs text-slate-400">
+                Pick from 2025 schedule (optional)
+              </span>
+              <select
+                value={SCHEDULE_BY_CODE[eventCode] ? eventCode : ""}
+                onChange={(e) => pickScheduled(e.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+              >
+                <option value="">— Custom event —</option>
+                {NHRA_2025_SCHEDULE.map((s) => (
+                  <option key={s.code} value={s.code}>
+                    {s.code} · {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="grid gap-3 sm:grid-cols-[1fr_140px_120px_auto]">
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Event name (e.g. NHRA Gatornationals)"
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
+              />
+              <input
+                value={eventCode}
+                onChange={(e) => setEventCode(e.target.value)}
+                placeholder="Code (01-GF1)"
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
+              />
+              <input
+                type="number"
+                value={year}
+                onChange={(e) => setYear(Number(e.target.value))}
+                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-sky-500 focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={busy || !name.trim()}
+                className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500 disabled:opacity-50"
+              >
+                Create
+              </button>
+            </div>
           </form>
         )}
 

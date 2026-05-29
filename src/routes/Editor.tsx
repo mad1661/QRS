@@ -3,14 +3,28 @@ import { Link, useParams } from "react-router-dom";
 import { AppHeader } from "../components/AppHeader.tsx";
 import { CenteredMessage } from "../components/CenteredMessage.tsx";
 import { ClassPanel } from "../components/ClassPanel.tsx";
-import { CLASS_BY_CODE } from "../lib/classes.ts";
-import { subscribeEvent } from "../lib/store.ts";
+import { CLASS_BY_CODE, CLASSES } from "../lib/classes.ts";
+import { subscribeEvent, updateEvent } from "../lib/store.ts";
 import type { EventDoc } from "../lib/types.ts";
 
 export function Editor() {
   const { eventId } = useParams();
   const [event, setEvent] = useState<EventDoc | null | undefined>(undefined);
   const [selected, setSelected] = useState<string | null>(null);
+  const [manageOpen, setManageOpen] = useState(false);
+
+  async function toggleClass(code: string, on: boolean) {
+    if (!eventId || !event) return;
+    const next = on
+      ? CLASSES.filter(
+          (c) => event.enabledClasses.includes(c.code) || c.code === code,
+        ).map((c) => c.code)
+      : event.enabledClasses.filter((c) => c !== code);
+    if (!on && selected === code) {
+      setSelected(next[0] ?? null);
+    }
+    await updateEvent(eventId, { enabledClasses: next });
+  }
 
   useEffect(() => {
     if (!eventId) return;
@@ -46,13 +60,49 @@ export function Editor() {
         <Link to="/" className="text-sm text-sky-400 hover:text-sky-300">
           ← Back to events
         </Link>
-        <div className="mt-3 mb-6">
-          <h1 className="text-xl font-semibold text-slate-100">{event.name}</h1>
-          <p className="mt-0.5 text-xs text-slate-500">
-            {event.eventCode ? `${event.eventCode} · ` : ""}
-            {event.year}
-          </p>
+        <div className="mt-3 mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-100">{event.name}</h1>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {event.eventCode ? `${event.eventCode} · ` : ""}
+              {event.year} · {event.enabledClasses.length} classes
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setManageOpen((v) => !v)}
+            className="shrink-0 rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+          >
+            {manageOpen ? "Done" : "Manage classes"}
+          </button>
         </div>
+
+        {manageOpen && (
+          <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+            <p className="mb-3 text-xs text-slate-400">
+              Enable the classes running at this event.
+            </p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+              {CLASSES.map((c) => {
+                const on = event.enabledClasses.includes(c.code);
+                return (
+                  <label
+                    key={c.code}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-200 hover:border-slate-600"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      onChange={(e) => toggleClass(c.code, e.target.checked)}
+                      className="accent-sky-500"
+                    />
+                    <span className="truncate">{c.name}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="grid gap-6 md:grid-cols-[200px_1fr]">
           <nav className="space-y-1">
