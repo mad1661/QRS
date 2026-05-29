@@ -1,31 +1,39 @@
 import type { Lane, LaneGroup } from "./classes";
 import { laneRotation } from "./classes";
+import { computeLiveOrder } from "./results";
 import type { EntryDoc } from "./types";
 
 /**
  * Pure run-sequence generator.
  *
- * Mirrors the QRS workbook's structure (confirmed by reverse-engineering the
- * class tabs), without its formula-grid quirks:
- *   1. Entries are placed in a seeded running order (Q1 = championship points;
- *      later sessions can be re-seeded from results).
- *   2. The running order is split into consecutive pairs that run together.
- *   3. A per-session lane rotation (e.g. L-R-R-L) decides which lane the first
- *      car of each pair occupies; lanes swap between sessions accordingly.
- *   4. An odd field produces a single (bye) run for the top seed, who runs in
- *      the lane opposite the session's "first" lane (matching the workbook).
+ * Per-session running order:
+ *   - Q1: championship points (seed).
+ *   - Q2: best ET from Q1, quickest → slowest.
+ *   - Q3: best ET from Q2, quickest → slowest.
+ *   - Final session (e.g. Q4): each car's best ET across all prior sessions.
+ * In every session the quickest pair runs LAST (the field is reversed so the
+ * top of the order is the final pair, and the slowest/bye runs first).
+ *
+ * Lanes:
+ *   - TF / FC / PS / PSM: strict per-car alternation (L,R,L,R or R,L,R,L).
+ *     Q1 lanes alternate down the seeded order; each later session a car flips
+ *     to the opposite of the lane it ran last. When re-pairing puts two cars
+ *     that are both "due" the same lane together, the lower-ranked (slower) car
+ *     is flipped so the pairing stays one-Left / one-Right.
+ *   - Other classes: a per-session "first lane" pattern (from the LANES table),
+ *     applied to the first car of each consecutive pair.
  */
 
 export interface SeqCompetitor {
   entryId: string;
   carNumber: string;
   driverName: string;
-  /** 1-based running-order position within the class. */
+  /** 1-based running-order position (1 = quickest / top seed) this session. */
   order: number;
 }
 
 export interface Pairing {
-  /** 1-based pair number within the session (running order). */
+  /** 1-based pair number within the session (1 = first to run). */
   pair: number;
   left: SeqCompetitor | null;
   right: SeqCompetitor | null;
@@ -36,29 +44,43 @@ export interface Pairing {
 export interface SessionPlan {
   /** 1-based session number (Q1, Q2, ...). */
   session: number;
-  /** Lane the first car of each pair starts in. */
+  /** Lane the #1 car (top of the order) runs in this session. */
   firstLane: Lane;
+  /** Human label for what the order is based on (e.g. "points", "Q1"). */
+  basis: string;
   pairings: Pairing[];
 }
 
-/**
- * Order entries into the seeded running order:
- *   - explicit `seed` first (ascending),
- *   - then higher `points`,
- *   - then driver name as a stable tiebreak.
- * Entries with neither seed nor points fall to the bottom.
- */
-export function orderEntries(entries: EntryDoc[]): SeqCompetitor[] {
-  const sorted = [...entries].sort((a, b) => {
-    if (a.seed != null && b.seed != null) return a.seed - b.seed;
-    if (a.seed != null) return -1;
-    if (b.seed != null) return 1;
-    const ap = a.points ?? -Infinity;
-    const bp = b.points ?? -Infinity;
-    if (ap !== bp) return bp - ap;
-    return a.driverName.localeCompare(b.driverName);
-  });
-  return sorted.map((e, i) => ({
+/** Subset of a run needed to re-seed later sessions. */
+export interface SeqRun {
+  carNumber: string;
+  driverName: string;
+  session: number;
+  isDQ: boolean;
+  ft1000: number | null;
+  mph1000: number | null;
+  ft1320: number | null;
+  mph1320: number | null;
+}
+
+/** Classes that use strict per-car lane alternation. */
+export const STRICT_ALTERNATION = new Set(["TF", "FC", "PS", "PSM"]);
+
+const opposite = (l: Lane): Lane => (l === "L" ? "R" : "L");
+
+/** Seed/points comparator (Q1 order and the fallback for cars without a time). */
+function seedCompare(a: EntryDoc, b: EntryDoc): number {
+  if (a.seed != null && b.seed != null) return a.seed - b.seed;
+  if (a.seed != null) return -1;
+  if (b.seed != null) return 1;
+  const ap = a.points ?? -Infinity;
+  const bp = b.points ?? -Infinity;
+  if (ap !== bp) return bp - ap;
+  return a.driverName.localeCompare(b.driverName);
+}
+
+function toCompetitors(entries: EntryDoc[]): SeqCompetitor[] {
+  return entries.map((e, i) => ({
     entryId: e.id,
     carNumber: e.carNumber,
     driverName: e.driverName,
@@ -66,45 +88,38 @@ export function orderEntries(entries: EntryDoc[]): SeqCompetitor[] {
   }));
 }
 
-/** Build pairings for one session given the ordered field and the session lane. */
-export function pairSession(
-  order: SeqCompetitor[],
-  firstLane: Lane,
-): Pairing[] {
-  const pairings: Pairing[] = [];
-  let idx = 0;
-  let pairNo = 1;
-
-  // Odd field: the top seed runs solo in the lane opposite the first lane.
-  if (order.length % 2 === 1) {
-    const solo = order[0];
-    pairings.push({
-      pair: pairNo++,
-      left: firstLane === "L" ? null : solo,
-      right: firstLane === "L" ? solo : null,
-      bye: true,
-    });
-    idx = 1;
-  }
-
-  for (; idx + 1 < order.length; idx += 2) {
-    const a = order[idx];
-    const b = order[idx + 1];
-    pairings.push({
-      pair: pairNo++,
-      left: firstLane === "L" ? a : b,
-      right: firstLane === "L" ? b : a,
-      bye: false,
-    });
-  }
-
-  return pairings;
+/** Q1 order: explicit seed, then points, then name. */
+export function orderEntries(entries: EntryDoc[]): SeqCompetitor[] {
+  return toCompetitors([...entries].sort(seedCompare));
 }
 
 /**
- * Resolve the lane rotation for a class group and session count into concrete
- * lanes. Group B's conditional third session ("?") defaults to the value in
- * `conditionalThird` (the workbook decides it from Q1/Q3 times at the track).
+ * Order entries by their best ET within `runsSubset` (quickest first). Cars
+ * with no valid time in the subset fall to the bottom in seed/points order.
+ */
+function orderByResults(
+  entries: EntryDoc[],
+  runsSubset: SeqRun[],
+  finishDistance: 1000 | 1320,
+): SeqCompetitor[] {
+  const live = computeLiveOrder(runsSubset, finishDistance);
+  const etByCar = new Map<string, number>();
+  for (const r of live) if (r.bestEt != null) etByCar.set(r.carNumber, r.bestEt);
+
+  const sorted = [...entries].sort((a, b) => {
+    const ea = a.carNumber ? etByCar.get(a.carNumber) : undefined;
+    const eb = b.carNumber ? etByCar.get(b.carNumber) : undefined;
+    if (ea != null && eb != null) return ea - eb;
+    if (ea != null) return -1;
+    if (eb != null) return 1;
+    return seedCompare(a, b);
+  });
+  return toCompetitors(sorted);
+}
+
+/**
+ * Resolve the lane-pattern for non-strict classes. Group B's conditional third
+ * session ("?") uses `conditionalThird`.
  */
 export function resolveRotation(
   group: LaneGroup,
@@ -113,30 +128,136 @@ export function resolveRotation(
 ): Lane[] {
   const raw = laneRotation(group, sessions);
   if (!raw) {
-    // Fallback: simple alternation starting Left.
-    return Array.from({ length: sessions }, (_, i) =>
-      i % 2 === 0 ? "L" : "R",
-    );
+    return Array.from({ length: sessions }, (_, i) => (i % 2 === 0 ? "L" : "R"));
   }
   return raw.map((l) => (l === "?" ? conditionalThird : l));
 }
 
 export interface GenerateOptions {
+  classCode: string;
   group: LaneGroup;
   sessions: number;
+  finishDistance: 1000 | 1320;
+  /** Lane the points leader runs in Q1 for strict-alternation classes. */
+  q1LeaderLane?: Lane;
+  /** Group B's trackside-decided 3rd-session lane (non-strict classes). */
   conditionalThird?: Lane;
+}
+
+/** Build the running order (pairs) for a session from an order + lane map. */
+function buildPairings(
+  order: SeqCompetitor[],
+  laneByEntry: Map<string, Lane>,
+): Pairing[] {
+  const n = order.length;
+  const pairCount = Math.floor(n / 2);
+  const built: Pairing[] = [];
+
+  for (let p = 0; p < pairCount; p++) {
+    const a = order[2 * p];
+    const b = order[2 * p + 1];
+    const aLeft = laneByEntry.get(a.entryId) === "L";
+    built.push({
+      pair: 0,
+      left: aLeft ? a : b,
+      right: aLeft ? b : a,
+      bye: false,
+    });
+  }
+  if (n % 2 === 1) {
+    const solo = order[n - 1];
+    const left = laneByEntry.get(solo.entryId) === "L";
+    built.push({ pair: 0, left: left ? solo : null, right: left ? null : solo, bye: true });
+  }
+
+  // Quickest pair (built first) runs LAST; slowest / bye runs first.
+  return built.reverse().map((pp, i) => ({ ...pp, pair: i + 1 }));
 }
 
 /** Generate the full Q1..Qn sequence for a class. */
 export function generateSequence(
   entries: EntryDoc[],
-  { group, sessions, conditionalThird = "L" }: GenerateOptions,
+  runs: SeqRun[],
+  opts: GenerateOptions,
 ): SessionPlan[] {
-  const order = orderEntries(entries);
-  const rotation = resolveRotation(group, sessions, conditionalThird);
-  return rotation.map((firstLane, i) => ({
-    session: i + 1,
-    firstLane,
-    pairings: pairSession(order, firstLane),
-  }));
+  const {
+    classCode,
+    group,
+    sessions,
+    finishDistance,
+    q1LeaderLane = "L",
+    conditionalThird = "L",
+  } = opts;
+  const strict = STRICT_ALTERNATION.has(classCode);
+  const pattern = resolveRotation(group, sessions, conditionalThird);
+
+  const plans: SessionPlan[] = [];
+  const prevLane = new Map<string, Lane>();
+
+  for (let s = 1; s <= sessions; s++) {
+    // 1. Running order for this session.
+    let order: SeqCompetitor[];
+    let basis: string;
+    if (s === 1) {
+      order = orderEntries(entries);
+      basis = "points";
+    } else if (s === sessions) {
+      order = orderByResults(
+        entries,
+        runs.filter((r) => r.session >= 1 && r.session < s),
+        finishDistance,
+      );
+      basis = `best of Q1–Q${s - 1}`;
+    } else {
+      order = orderByResults(
+        entries,
+        runs.filter((r) => r.session === s - 1),
+        finishDistance,
+      );
+      basis = `Q${s - 1}`;
+    }
+
+    // 2. Lane per car.
+    const laneByEntry = new Map<string, Lane>();
+    if (strict) {
+      if (s === 1) {
+        order.forEach((c, i) =>
+          laneByEntry.set(c.entryId, i % 2 === 0 ? q1LeaderLane : opposite(q1LeaderLane)),
+        );
+      } else {
+        const intended = (c: SeqCompetitor): Lane =>
+          opposite(prevLane.get(c.entryId) ?? q1LeaderLane);
+        for (let i = 0; i + 1 < order.length; i += 2) {
+          const a = order[i];
+          const b = order[i + 1];
+          const la = intended(a);
+          let lb = intended(b);
+          if (la === lb) lb = opposite(la); // flip the lower-ranked car
+          laneByEntry.set(a.entryId, la);
+          laneByEntry.set(b.entryId, lb);
+        }
+        if (order.length % 2 === 1) {
+          const solo = order[order.length - 1];
+          laneByEntry.set(solo.entryId, intended(solo));
+        }
+      }
+    } else {
+      const firstLane = pattern[s - 1] ?? "L";
+      for (let i = 0; i + 1 < order.length; i += 2) {
+        laneByEntry.set(order[i].entryId, firstLane);
+        laneByEntry.set(order[i + 1].entryId, opposite(firstLane));
+      }
+      if (order.length % 2 === 1) {
+        laneByEntry.set(order[order.length - 1].entryId, firstLane);
+      }
+    }
+    for (const c of order) prevLane.set(c.entryId, laneByEntry.get(c.entryId)!);
+
+    // 3. Pairs (quickest pair last).
+    const pairings = buildPairings(order, laneByEntry);
+    const firstLane = order.length ? laneByEntry.get(order[0].entryId)! : "L";
+    plans.push({ session: s, firstLane, basis, pairings });
+  }
+
+  return plans;
 }

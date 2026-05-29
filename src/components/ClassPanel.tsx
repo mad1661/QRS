@@ -226,6 +226,9 @@ export function ClassPanel({ eventId, event, classCode }: Props) {
           entries={entries}
           group={cfg.laneGroup}
           sessions={sessions}
+          classCode={classCode}
+          finishDistance={cfg.finishDistance}
+          runs={runs}
         />
       ) : (
         <>

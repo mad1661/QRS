@@ -1,36 +1,62 @@
 import { useMemo, useState } from "react";
 import type { Lane, LaneGroup } from "../lib/classes.ts";
-import { generateSequence, type SeqCompetitor } from "../lib/sequence.ts";
-import type { EntryDoc } from "../lib/types.ts";
+import {
+  STRICT_ALTERNATION,
+  generateSequence,
+  type SeqCompetitor,
+} from "../lib/sequence.ts";
+import type { EntryDoc, RunDoc } from "../lib/types.ts";
 
 interface Props {
   entries: EntryDoc[];
   group: LaneGroup;
   sessions: number;
+  classCode: string;
+  finishDistance: number;
+  runs: RunDoc[];
 }
 
-function Car({ c }: { c: SeqCompetitor | null }) {
-  if (!c) {
-    return <span className="text-slate-600">— bye —</span>;
-  }
+function Car({ c, lane }: { c: SeqCompetitor | null; lane: Lane }) {
+  if (!c) return <span className="text-slate-600">— bye —</span>;
   return (
     <span>
-      <span className="font-mono text-slate-400">
-        {c.carNumber || "?"}
-      </span>{" "}
+      <span
+        className={`mr-2 inline-block w-4 text-center font-mono text-xs ${
+          lane === "L" ? "text-emerald-400" : "text-amber-400"
+        }`}
+      >
+        {lane}
+      </span>
+      <span className="font-mono text-slate-400">{c.carNumber || "?"}</span>{" "}
       <span className="text-slate-100">{c.driverName || "(unnamed)"}</span>
     </span>
   );
 }
 
-export function SequenceView({ entries, group, sessions }: Props) {
-  // Group B's 3rd session lane is decided trackside; let the user flip it.
+export function SequenceView({
+  entries,
+  group,
+  sessions,
+  classCode,
+  finishDistance,
+  runs,
+}: Props) {
+  const strict = STRICT_ALTERNATION.has(classCode);
   const [conditionalThird, setConditionalThird] = useState<Lane>("L");
-  const showThirdToggle = group === "B" && sessions === 3;
+  const [q1LeaderLane, setQ1LeaderLane] = useState<Lane>("L");
+  const showThirdToggle = !strict && group === "B" && sessions === 3;
 
   const plans = useMemo(
-    () => generateSequence(entries, { group, sessions, conditionalThird }),
-    [entries, group, sessions, conditionalThird],
+    () =>
+      generateSequence(entries, runs, {
+        classCode,
+        group,
+        sessions,
+        finishDistance: finishDistance === 1000 ? 1000 : 1320,
+        q1LeaderLane,
+        conditionalThird,
+      }),
+    [entries, runs, classCode, group, sessions, finishDistance, q1LeaderLane, conditionalThird],
   );
 
   if (entries.length === 0) {
@@ -43,27 +69,57 @@ export function SequenceView({ entries, group, sessions }: Props) {
 
   return (
     <div className="space-y-5">
-      {showThirdToggle && (
-        <div className="flex items-center gap-2 text-xs text-slate-400">
-          Q3 lane (decided by Q1/Q3 times at the track):
-          <div className="inline-flex overflow-hidden rounded-md border border-slate-700">
-            {(["L", "R"] as Lane[]).map((l) => (
-              <button
-                key={l}
-                type="button"
-                onClick={() => setConditionalThird(l)}
-                className={`px-3 py-1 ${
-                  conditionalThird === l
-                    ? "bg-sky-600 text-white"
-                    : "text-slate-300 hover:bg-slate-800"
-                }`}
-              >
-                {l === "L" ? "L-R-L" : "L-R-R"}
-              </button>
-            ))}
+      <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400">
+        {strict && (
+          <div className="flex items-center gap-2">
+            Q1 leader lane:
+            <div className="inline-flex overflow-hidden rounded-md border border-slate-700">
+              {(["L", "R"] as Lane[]).map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  onClick={() => setQ1LeaderLane(l)}
+                  className={`px-3 py-1 ${
+                    q1LeaderLane === l
+                      ? "bg-sky-600 text-white"
+                      : "text-slate-300 hover:bg-slate-800"
+                  }`}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+            <span className="text-slate-500">
+              (each car alternates {q1LeaderLane === "L" ? "L,R,L,R" : "R,L,R,L"})
+            </span>
           </div>
-        </div>
-      )}
+        )}
+        {showThirdToggle && (
+          <div className="flex items-center gap-2">
+            Q3 lane:
+            <div className="inline-flex overflow-hidden rounded-md border border-slate-700">
+              {(["L", "R"] as Lane[]).map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  onClick={() => setConditionalThird(l)}
+                  className={`px-3 py-1 ${
+                    conditionalThird === l
+                      ? "bg-sky-600 text-white"
+                      : "text-slate-300 hover:bg-slate-800"
+                  }`}
+                >
+                  {l === "L" ? "L-R-L" : "L-R-R"}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <p className="text-xs text-slate-500">
+        Each session is ordered by performance; the quickest pair runs last.
+      </p>
 
       <div className="grid gap-4 md:grid-cols-2">
         {plans.map((plan) => (
@@ -76,10 +132,8 @@ export function SequenceView({ entries, group, sessions }: Props) {
                 Q{plan.session}
               </h3>
               <span className="text-xs text-slate-500">
-                first lane{" "}
-                <span className="font-mono text-slate-300">
-                  {plan.firstLane}
-                </span>
+                ordered by{" "}
+                <span className="text-slate-300">{plan.basis}</span>
               </span>
             </div>
             <table className="w-full text-sm">
@@ -95,10 +149,10 @@ export function SequenceView({ entries, group, sessions }: Props) {
                   <tr key={p.pair} className={p.bye ? "bg-slate-900/40" : ""}>
                     <td className="px-3 py-1.5 text-slate-500">{p.pair}</td>
                     <td className="px-3 py-1.5">
-                      <Car c={p.left} />
+                      <Car c={p.left} lane="L" />
                     </td>
                     <td className="px-3 py-1.5">
-                      <Car c={p.right} />
+                      <Car c={p.right} lane="R" />
                     </td>
                   </tr>
                 ))}
