@@ -19,6 +19,8 @@ export interface StandingRow {
   driver: string;
   points: number;
   vehicle: string;
+  /** Car/bike number from the driver's nhra.com profile ("" if unavailable). */
+  carNumber?: string;
 }
 
 /** A scraped standings doc at `standings/{year}_{classCode}`. */

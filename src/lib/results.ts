@@ -73,15 +73,20 @@ export function computeLiveOrder(
     ft1320: number | null;
     mph1320: number | null;
   }[],
-  finishDistance: 1000 | 1320,
+  _finishDistance: 1000 | 1320,
 ): LiveOrderRow[] {
-  const etKey = finishDistance === 1000 ? "ft1000" : "ft1320";
-  const mphKey = finishDistance === 1000 ? "mph1000" : "mph1320";
-
+  // The portal records the finish in ft1320 for every class (the ft1000 column
+  // is empty even for the 1000-ft nitro classes), so prefer it and fall back.
   const byCar = new Map<string, LiveOrderRow>();
   for (const r of runs) {
     if (r.isDQ) continue;
-    const et = r[etKey] as number | null;
+    const et =
+      r.ft1320 != null && r.ft1320 > 0
+        ? r.ft1320
+        : r.ft1000 != null && r.ft1000 > 0
+          ? r.ft1000
+          : null;
+    const mph = r.ft1320 != null && r.ft1320 > 0 ? r.mph1320 : r.mph1000;
     const key = r.carNumber;
     const cur =
       byCar.get(key) ??
@@ -97,7 +102,7 @@ export function computeLiveOrder(
     if (r.driverName && !cur.driverName) cur.driverName = r.driverName;
     if (et != null && et > 0 && (cur.bestEt == null || et < cur.bestEt)) {
       cur.bestEt = et;
-      cur.bestMph = (r[mphKey] as number | null) ?? null;
+      cur.bestMph = mph ?? null;
       cur.bestSession = r.session;
     }
     byCar.set(key, cur);

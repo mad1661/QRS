@@ -48,7 +48,11 @@ export function SeedFromStandings({
           setError("Standings returned no drivers for this class.");
         }
         setRows(
-          standings.map((r) => ({ ...r, selected: true, carNumber: "" })),
+          standings.map((r) => ({
+            ...r,
+            selected: true,
+            carNumber: r.carNumber ?? "",
+          })),
         );
       })
       .catch((err: unknown) => {

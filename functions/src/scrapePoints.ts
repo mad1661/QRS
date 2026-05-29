@@ -18,6 +18,10 @@ export interface StandingRow {
   driver: string;
   points: number;
   vehicle: string;
+  /** Car/bike number from the driver's nhra.com profile ("" if unavailable). */
+  carNumber: string;
+  /** Path to the driver's nhra.com profile, used to look up the car number. */
+  driverHref?: string;
 }
 
 function standingsUrl(year: number, tab: string): string {
@@ -34,8 +38,9 @@ function parseStandings(html: string): StandingRow[] {
 
     // Position lives in the leading <th> (may include a "clinched" image).
     const posText = $(cells[0]).text().replace(/\D+/g, "").trim();
-    const driver = $(cells[1]).find("a").first().text().trim() ||
-      $(cells[1]).text().trim();
+    const driverLink = $(cells[1]).find("a").first();
+    const driver = driverLink.text().trim() || $(cells[1]).text().trim();
+    const driverHref = driverLink.attr("href") ?? "";
     const pointsText = $(cells[2]).text().replace(/[^\d.-]/g, "").trim();
     // Vehicle is the last left-aligned cell.
     const vehicle = $(cells[cells.length - 1]).text().trim();
@@ -48,10 +53,47 @@ function parseStandings(html: string): StandingRow[] {
       driver,
       points: Number.isFinite(points) ? points : 0,
       vehicle: vehicle === driver ? "" : vehicle,
+      carNumber: "",
+      driverHref,
     });
   });
 
   return rows;
+}
+
+const UA = "Mozilla/5.0 (compatible; QRS/1.0)";
+
+/**
+ * Fetch a driver's car number from their nhra.com profile page. The number on
+ * the car is shown as `.detail-info__profile-number` (this is the "registration"
+ * number you reach by clicking the driver's name in the standings).
+ */
+async function fetchCarNumber(href: string): Promise<string> {
+  if (!href) return "";
+  const url = href.startsWith("http") ? href : `https://www.nhra.com${href}`;
+  try {
+    const res = await fetch(url, { headers: { "User-Agent": UA } });
+    if (!res.ok) return "";
+    const $ = cheerio.load(await res.text());
+    return $(".detail-info__profile-number").first().text().trim();
+  } catch {
+    return "";
+  }
+}
+
+/** Resolve car numbers for all rows with limited concurrency. */
+async function fillCarNumbers(rows: StandingRow[]): Promise<void> {
+  const limit = 6;
+  let i = 0;
+  async function worker() {
+    while (i < rows.length) {
+      const idx = i++;
+      rows[idx].carNumber = await fetchCarNumber(rows[idx].driverHref ?? "");
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(limit, rows.length) }, () => worker()),
+  );
 }
 
 async function fetchClassStandings(
@@ -66,12 +108,14 @@ async function fetchClassStandings(
     );
   }
   const res = await fetch(standingsUrl(year, tab), {
-    headers: { "User-Agent": "Mozilla/5.0 (compatible; QRS/1.0)" },
+    headers: { "User-Agent": UA },
   });
   if (!res.ok) {
     throw new HttpsError("unavailable", `NHRA returned ${res.status}`);
   }
-  return parseStandings(await res.text());
+  const rows = parseStandings(await res.text());
+  await fillCarNumbers(rows);
+  return rows;
 }
 
 export async function assertApproved(
