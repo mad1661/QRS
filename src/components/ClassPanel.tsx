@@ -11,6 +11,7 @@ import { CLASS_BY_CODE, laneRotation } from "../lib/classes.ts";
 import { STANDINGS_CLASSES, scrapePoints } from "../lib/functions.ts";
 import type { EntryDoc, EventDoc } from "../lib/types.ts";
 import { ImportEntries } from "./ImportEntries.tsx";
+import { SequenceView } from "./SequenceView.tsx";
 
 interface Props {
   eventId: string;
@@ -41,6 +42,7 @@ export function ClassPanel({ eventId, event, classCode }: Props) {
   const [driverName, setDriverName] = useState("");
   const [points, setPoints] = useState("");
   const [seeding, setSeeding] = useState(false);
+  const [view, setView] = useState<"entries" | "sequence">("entries");
 
   const canSeed = (STANDINGS_CLASSES as readonly string[]).includes(classCode);
 
@@ -198,6 +200,31 @@ export function ClassPanel({ eventId, event, classCode }: Props) {
         </div>
       )}
 
+      <div className="inline-flex overflow-hidden rounded-lg border border-slate-700 text-sm">
+        {(["entries", "sequence"] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => setView(v)}
+            className={`px-4 py-1.5 capitalize ${
+              view === v
+                ? "bg-sky-600 text-white"
+                : "text-slate-300 hover:bg-slate-800"
+            }`}
+          >
+            {v === "sequence" ? "Run sequence" : "Entries"}
+          </button>
+        ))}
+      </div>
+
+      {view === "sequence" ? (
+        <SequenceView
+          entries={entries}
+          group={cfg.laneGroup}
+          sessions={sessions}
+        />
+      ) : (
+        <>
       <form
         onSubmit={handleAdd}
         className="grid gap-2 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 sm:grid-cols-[100px_1fr_110px_auto]"
@@ -304,6 +331,8 @@ export function ClassPanel({ eventId, event, classCode }: Props) {
             </tbody>
           </table>
         </div>
+      )}
+        </>
       )}
     </div>
   );
