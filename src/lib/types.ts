@@ -53,6 +53,12 @@ export interface EventDoc {
   enabledClasses: string[];
   /** Number of qualifying sessions per class code (defaults applied in UI). */
   sessionsByClass: Record<string, number>;
+  /**
+   * Overrides for routing portal categories to a class, keyed by the UPPERCASE
+   * portal category name. Value is a class code, or "" to ignore the category.
+   * Used for "race within a race" (e.g. a shootout category counts for FC).
+   */
+  categoryOverrides?: Record<string, string>;
   createdAt: Stamp;
   updatedAt: Stamp;
 }

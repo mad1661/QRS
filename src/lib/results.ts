@@ -28,13 +28,22 @@ export function portalRound(value: string): string {
   return /'Round'\s*:\s*'([^']*)'/.exec(value ?? "")?.[1]?.trim() ?? "";
 }
 
-/** Convert a scraped grid row (portal column names) into a NewRun. */
+/**
+ * Convert a scraped grid row (portal column names) into a NewRun.
+ *
+ * `overrides` maps an UPPERCASE portal category to a class code (or "" to
+ * ignore it), letting "race within a race" categories count toward a class.
+ * When a category has no override, the built-in category→class map is used.
+ */
 export function rowToRun(
   row: Record<string, string>,
   fallbackCategory: string,
+  overrides?: Record<string, string>,
 ): NewRun | null {
   const category = row["Category"] || fallbackCategory;
-  const classCode = categoryToCode(category);
+  const key = category.trim().toUpperCase();
+  const classCode =
+    overrides && key in overrides ? overrides[key] || undefined : categoryToCode(category);
   if (!classCode) return null;
   const carNumber = (row["CarNumber"] ?? "").trim();
   if (!carNumber) return null;

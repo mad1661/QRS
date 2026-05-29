@@ -120,6 +120,7 @@ export const scrapeResults = onCall(
       date: request.data?.date as string | undefined,
       category: request.data?.category as string | undefined,
     };
+    const mode = request.data?.mode as string | undefined;
 
     const jar = new CookieJar();
 
@@ -180,8 +181,6 @@ export const scrapeResults = onCall(
     if (sel.year) await postback("yearDropDown", sel.year);
     if (sel.year || sel.eventType) await postback("eventTypeDropDown", sel.eventType);
     if (sel.event) await postback("divEventRaceDropDown", sel.event);
-    if (sel.date) await postback("dateDropDown", sel.date);
-    if (sel.category) await postback("categoryRoundDropDown", sel.category);
 
     const result: {
       years: Option[];
@@ -190,16 +189,52 @@ export const scrapeResults = onCall(
       dates: Option[];
       categories: Option[];
       grid?: { headers: string[]; rows: Record<string, string>[] };
+      allRows?: Record<string, string>[];
+      categoriesSeen?: string[];
       selection: typeof sel;
     } = {
       years: dropdown(html, "yearDropDown"),
       eventTypes: dropdown(html, "eventTypeDropDown"),
       events: dropdown(html, "divEventRaceDropDown"),
-      dates: dropdown(html, "dateDropDown"),
-      categories: dropdown(html, "categoryRoundDropDown"),
+      dates: [],
+      categories: [],
       selection: sel,
     };
 
+    // 3a) Bulk mode: walk every date × category for the event and collect rows.
+    if (mode === "all" && sel.event) {
+      const allRows: Record<string, string>[] = [];
+      const seen = new Set<string>();
+      let posts = 0;
+      const MAX_POSTS = 150; // safety bound to stay within the timeout
+      const dates = dropdown(html, "dateDropDown");
+      for (const d of dates) {
+        if (posts++ > MAX_POSTS) break;
+        await postback("dateDropDown", d.value);
+        const cats = dropdown(html, "categoryRoundDropDown");
+        for (const c of cats) {
+          if (posts++ > MAX_POSTS) break;
+          await postback("categoryRoundDropDown", c.value);
+          const { rows } = parseGrid(html);
+          for (const r of rows) {
+            const cat = (r["Category"] ?? "").trim();
+            if (cat) seen.add(cat.toUpperCase());
+            // Skip the portal's blank placeholder rows (no car number).
+            if ((r["CarNumber"] ?? "").trim()) allRows.push(r);
+          }
+        }
+      }
+      result.dates = dates;
+      result.allRows = allRows;
+      result.categoriesSeen = [...seen].sort();
+      return result;
+    }
+
+    // 3b) Progressive mode: one level at a time, with the grid once chosen.
+    if (sel.date) await postback("dateDropDown", sel.date);
+    if (sel.category) await postback("categoryRoundDropDown", sel.category);
+    result.dates = dropdown(html, "dateDropDown");
+    result.categories = dropdown(html, "categoryRoundDropDown");
     if (sel.category) result.grid = parseGrid(html);
 
     return result;

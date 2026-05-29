@@ -58,6 +58,8 @@ function mapEvent(id: string, data: Record<string, unknown>): EventDoc {
     viewers: (data.viewers as string[]) ?? [],
     enabledClasses: (data.enabledClasses as string[]) ?? [],
     sessionsByClass: (data.sessionsByClass as Record<string, number>) ?? {},
+    categoryOverrides:
+      (data.categoryOverrides as Record<string, string>) ?? undefined,
     createdAt: (data.createdAt as EventDoc["createdAt"]) ?? null,
     updatedAt: (data.updatedAt as EventDoc["updatedAt"]) ?? null,
   };

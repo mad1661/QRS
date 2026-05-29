@@ -33,6 +33,8 @@ export interface ScrapeResultsSelection {
   event?: string;
   date?: string;
   category?: string;
+  /** "all" walks every date × category for the event and returns all rows. */
+  mode?: "all";
 }
 
 export interface ScrapeResultsResult {
@@ -42,6 +44,10 @@ export interface ScrapeResultsResult {
   dates: PortalOption[];
   categories: PortalOption[];
   grid?: { headers: string[]; rows: Record<string, string>[] };
+  /** Bulk mode: every run row across all dates/categories for the event. */
+  allRows?: Record<string, string>[];
+  /** Bulk mode: distinct UPPERCASE category names found. */
+  categoriesSeen?: string[];
   selection: ScrapeResultsSelection;
 }
 
