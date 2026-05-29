@@ -4,14 +4,17 @@ import {
   deleteEntry,
   replaceClassEntries,
   subscribeClassEntries,
+  subscribeClassRuns,
   updateEntry,
   updateEvent,
 } from "../lib/store.ts";
 import { CLASS_BY_CODE, laneRotation } from "../lib/classes.ts";
 import { STANDINGS_CLASSES, scrapePoints } from "../lib/functions.ts";
-import type { EntryDoc, EventDoc } from "../lib/types.ts";
+import { computeLiveOrder } from "../lib/results.ts";
+import type { EntryDoc, EventDoc, RunDoc } from "../lib/types.ts";
 import { ImportEntries } from "./ImportEntries.tsx";
 import { SequenceView } from "./SequenceView.tsx";
+import { LiveOrder } from "./LiveOrder.tsx";
 
 interface Props {
   eventId: string;
@@ -43,6 +46,12 @@ export function ClassPanel({ eventId, event, classCode }: Props) {
   const [points, setPoints] = useState("");
   const [seeding, setSeeding] = useState(false);
   const [view, setView] = useState<"entries" | "sequence">("entries");
+  const [runs, setRuns] = useState<RunDoc[]>([]);
+
+  useEffect(() => {
+    const unsub = subscribeClassRuns(eventId, classCode, setRuns);
+    return unsub;
+  }, [eventId, classCode]);
 
   const canSeed = (STANDINGS_CLASSES as readonly string[]).includes(classCode);
 
@@ -141,9 +150,23 @@ export function ClassPanel({ eventId, event, classCode }: Props) {
     }
   }
 
+  async function reseedFromLive() {
+    if (!cfg) return;
+    const order = computeLiveOrder(runs, cfg.finishDistance);
+    const byCar = new Map(entries.map((e) => [e.carNumber, e]));
+    await Promise.all(
+      order.map((row, i) => {
+        const entry = byCar.get(row.carNumber);
+        if (!entry || entry.seed === i + 1) return Promise.resolve();
+        return updateEntry(eventId, entry.id, { seed: i + 1 });
+      }),
+    );
+  }
+
   if (!cfg) return <p className="text-sm text-slate-400">Unknown class.</p>;
 
   const sessionOptions = cfg.laneGroup === "A" ? [2, 3, 4, 5] : [2, 3];
+  const liveOrder = computeLiveOrder(runs, cfg.finishDistance);
 
   return (
     <div className="space-y-5">
@@ -216,6 +239,14 @@ export function ClassPanel({ eventId, event, classCode }: Props) {
           </button>
         ))}
       </div>
+
+      {runs.length > 0 && (
+        <LiveOrder
+          rows={liveOrder}
+          finishDistance={cfg.finishDistance}
+          onReseed={reseedFromLive}
+        />
+      )}
 
       {view === "sequence" ? (
         <SequenceView

@@ -22,19 +22,33 @@ export async function scrapePoints(
   return res.data;
 }
 
-interface ScrapeResultsResult {
-  loggedIn: boolean;
-  landingUrl: string;
-  dropdowns: Record<string, { value: string; label: string }[]>;
-  grid: { headers: string[]; rows: Record<string, string>[] };
+export interface PortalOption {
+  value: string;
+  label: string;
 }
 
-export async function scrapeResults(params: {
-  year?: number;
-  eventCode?: string;
+export interface ScrapeResultsSelection {
+  year?: string;
+  eventType?: string;
+  event?: string;
+  date?: string;
   category?: string;
-}): Promise<ScrapeResultsResult> {
-  const fn = httpsCallable<typeof params, ScrapeResultsResult>(
+}
+
+export interface ScrapeResultsResult {
+  years: PortalOption[];
+  eventTypes: PortalOption[];
+  events: PortalOption[];
+  dates: PortalOption[];
+  categories: PortalOption[];
+  grid?: { headers: string[]; rows: Record<string, string>[] };
+  selection: ScrapeResultsSelection;
+}
+
+export async function scrapeResults(
+  params: ScrapeResultsSelection,
+): Promise<ScrapeResultsResult> {
+  const fn = httpsCallable<ScrapeResultsSelection, ScrapeResultsResult>(
     functions,
     "scrapeResults",
   );

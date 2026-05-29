@@ -21,6 +21,8 @@ import type {
   EventDoc,
   NewEntry,
   NewEvent,
+  NewRun,
+  RunDoc,
   UserDoc,
 } from "./types";
 
@@ -32,6 +34,16 @@ function eventsCol() {
 
 function entriesCol(eventId: string) {
   return collection(db, "events", eventId, "entries");
+}
+
+function runsCol(eventId: string) {
+  return collection(db, "events", eventId, "runs");
+}
+
+/** Stable, idempotent run id: one run per car per session per class. */
+export function runId(run: Pick<NewRun, "classCode" | "session" | "carNumber">) {
+  const car = (run.carNumber || "x").replace(/[/]/g, "-");
+  return `${run.classCode}_${run.session}_${car}`;
 }
 
 function mapEvent(id: string, data: Record<string, unknown>): EventDoc {
@@ -220,6 +232,75 @@ export async function replaceClassEntries(
   );
   await Promise.all(existing.docs.map((d) => deleteDoc(d.ref)));
   await addEntries(eventId, entries);
+}
+
+// ---------- Runs (results) ----------
+
+function mapRun(id: string, data: Record<string, unknown>): RunDoc {
+  const num = (k: string) => (data[k] as number | null) ?? null;
+  return {
+    id,
+    classCode: (data.classCode as string) ?? "",
+    session: (data.session as number) ?? 1,
+    carNumber: (data.carNumber as string) ?? "",
+    driverName: (data.driverName as string) ?? "",
+    lane: (data.lane as string) ?? "",
+    rt: num("rt"),
+    ft60: num("ft60"),
+    ft330: num("ft330"),
+    ft660: num("ft660"),
+    mph660: num("mph660"),
+    ft1000: num("ft1000"),
+    mph1000: num("mph1000"),
+    ft1320: num("ft1320"),
+    mph1320: num("mph1320"),
+    dialIn: num("dialIn"),
+    isDQ: (data.isDQ as boolean) ?? false,
+    source: (data.source as string) ?? "scraped",
+    category: (data.category as string) ?? "",
+    timestamp: (data.timestamp as string) ?? "",
+    createdAt: (data.createdAt as RunDoc["createdAt"]) ?? null,
+    updatedAt: (data.updatedAt as RunDoc["updatedAt"]) ?? null,
+  };
+}
+
+export function subscribeClassRuns(
+  eventId: string,
+  classCode: string,
+  cb: (runs: RunDoc[]) => void,
+  onError?: (err: Error) => void,
+): Unsubscribe {
+  const q = query(runsCol(eventId), where("classCode", "==", classCode));
+  return onSnapshot(
+    q,
+    (snap) => cb(snap.docs.map((d) => mapRun(d.id, d.data()))),
+    (err) => onError?.(err),
+  );
+}
+
+export async function upsertRun(
+  eventId: string,
+  run: NewRun,
+): Promise<void> {
+  const id = runId(run);
+  await setDoc(
+    doc(db, "events", eventId, "runs", id),
+    { ...run, updatedAt: serverTimestamp(), createdAt: serverTimestamp() },
+    { merge: true },
+  );
+}
+
+/** Bulk upsert scraped runs (idempotent by car/session/class). */
+export async function upsertRuns(
+  eventId: string,
+  runs: NewRun[],
+): Promise<number> {
+  await Promise.all(runs.map((r) => upsertRun(eventId, r)));
+  return runs.length;
+}
+
+export async function deleteRun(eventId: string, id: string): Promise<void> {
+  await deleteDoc(doc(db, "events", eventId, "runs", id));
 }
 
 // ---------- Users (superadmin approval) ----------

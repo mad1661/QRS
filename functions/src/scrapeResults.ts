@@ -4,11 +4,15 @@ import * as cheerio from "cheerio";
 import { assertApproved } from "./scrapePoints.js";
 
 /**
- * getresults.nhradata.com is an ASP.NET WebForms app behind a login. This
- * function logs in with Secret Manager credentials, then scrapes the run grid
- * (runGridView) and the available filter dropdowns. Selection postbacks
- * (year/event/category) need validation against the live portal, so the first
- * runs are expected to be used to refine the postback flow.
+ * getresults.nhradata.com is an ASP.NET WebForms app behind a login. The
+ * results page uses a cascade of auto-postback dropdowns:
+ *
+ *   year -> eventType -> event -> date -> category+round -> run grid
+ *
+ * This function logs in (Secret Manager credentials), then replays the cascade
+ * as far as the provided selection allows, returning the option lists for each
+ * level plus the run grid once a category+round is chosen. The client drives it
+ * progressively, passing back the opaque option values.
  */
 
 const RESULTS_USER = defineSecret("NHRA_RESULTS_USER");
@@ -16,92 +20,77 @@ const RESULTS_PASS = defineSecret("NHRA_RESULTS_PASS");
 
 const BASE = "https://getresults.nhradata.com";
 const LOGIN_URL = `${BASE}/login.aspx?ReturnUrl=%2f`;
+const POST_URL = `${BASE}/default.aspx`;
+const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) QRS/1.0";
 
-/** Minimal cookie jar: stores name=value pairs from Set-Cookie. */
+interface Option {
+  value: string;
+  label: string;
+}
+
 class CookieJar {
   private jar = new Map<string, string>();
-
   store(res: Response) {
-    const setCookies = res.headers.getSetCookie?.() ?? [];
-    for (const c of setCookies) {
+    for (const c of res.headers.getSetCookie?.() ?? []) {
       const [pair] = c.split(";");
       const eq = pair.indexOf("=");
       if (eq > 0) this.jar.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
     }
   }
-
-  header(): string {
+  header() {
     return [...this.jar.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
   }
 }
 
-const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) QRS/1.0";
-
-/** Collect every hidden input plus the discovered credential/submit fields. */
-function buildLoginForm(html: string, user: string, pass: string) {
+/** Hidden inputs + text inputs + current select values, for replaying postbacks. */
+function formState(html: string): Record<string, string> {
   const $ = cheerio.load(html);
-  const form: Record<string, string> = {};
-
+  const fields: Record<string, string> = {};
   $("input").each((_, el) => {
     const name = $(el).attr("name");
     if (!name) return;
     const type = ($(el).attr("type") ?? "text").toLowerCase();
-    const value = $(el).attr("value") ?? "";
-    if (type === "hidden") form[name] = value;
+    if (type === "hidden" || type === "text") fields[name] = $(el).attr("value") ?? "";
   });
-
-  // Discover the username (text/email) and password fields by type.
-  const userField =
-    $('input[type="email"]').attr("name") ??
-    $('input[type="text"]').first().attr("name");
-  const passField = $('input[type="password"]').first().attr("name");
-  if (!userField || !passField) {
-    throw new HttpsError(
-      "internal",
-      "Could not locate login fields on login.aspx (page layout changed).",
-    );
-  }
-  form[userField] = user;
-  form[passField] = pass;
-
-  // Include the submit button so WebForms treats it as the trigger.
-  const submit = $('input[type="submit"]').first();
-  const submitName = submit.attr("name");
-  if (submitName) form[submitName] = submit.attr("value") ?? "Log In";
-
-  const action = $("form").attr("action") ?? "login.aspx";
-  return { form, action };
+  $("select").each((_, el) => {
+    const name = $(el).attr("name");
+    if (!name) return;
+    const selected =
+      $(el).find("option[selected]").attr("value") ??
+      $(el).find("option").first().attr("value") ??
+      "";
+    fields[name] = selected;
+  });
+  return fields;
 }
 
-function parseDropdown($: cheerio.CheerioAPI, id: string) {
-  const opts: { value: string; label: string }[] = [];
-  $(`#${id} option`).each((_, o) => {
-    opts.push({
-      value: $(o).attr("value") ?? "",
-      label: $(o).text().trim(),
-    });
-  });
-  return opts;
+function dropdown(html: string, id: string): Option[] {
+  const $ = cheerio.load(html);
+  return $(`#${id} option`)
+    .map((_, o) => ({ value: $(o).attr("value") ?? "", label: $(o).text().trim() }))
+    .get()
+    .filter((o) => o.label && !/^--/.test(o.label));
 }
 
-function parseRunGrid($: cheerio.CheerioAPI) {
-  const headers: string[] = [];
-  $("#runGridView tr").first().find("th").each((_, th) => {
-    headers.push($(th).text().trim());
-  });
-
+function parseGrid(html: string) {
+  const $ = cheerio.load(html);
+  const headers = $("#runGridView tr")
+    .first()
+    .find("th")
+    .map((_, th) => $(th).text().trim())
+    .get();
   const rows: Record<string, string>[] = [];
-  $("#runGridView tr").slice(1).each((_, tr) => {
-    const cells = $(tr).find("td");
-    if (cells.length === 0) return;
-    const row: Record<string, string> = {};
-    cells.each((i, td) => {
-      const key = headers[i] || `col${i}`;
-      row[key] = $(td).text().trim();
+  $("#runGridView tr")
+    .slice(1)
+    .each((_, tr) => {
+      const cells = $(tr).find("td");
+      if (cells.length === 0) return;
+      const row: Record<string, string> = {};
+      cells.each((i, td) => {
+        row[headers[i] || `col${i}`] = $(td).text().trim();
+      });
+      rows.push(row);
     });
-    rows.push(row);
-  });
-
   return { headers, rows };
 }
 
@@ -109,7 +98,7 @@ export const scrapeResults = onCall(
   {
     region: "us-central1",
     timeoutSeconds: 240,
-    memory: "1GiB",
+    memory: "512MiB",
     secrets: [RESULTS_USER, RESULTS_PASS],
   },
   async (request) => {
@@ -124,20 +113,24 @@ export const scrapeResults = onCall(
       );
     }
 
+    const sel = {
+      year: request.data?.year as string | undefined,
+      eventType: (request.data?.eventType as string | undefined) ?? "N",
+      event: request.data?.event as string | undefined,
+      date: request.data?.date as string | undefined,
+      category: request.data?.category as string | undefined,
+    };
+
     const jar = new CookieJar();
 
-    // 1) GET the login page to capture viewstate + discover fields.
+    // 1) Login.
     const loginPage = await fetch(LOGIN_URL, { headers: { "User-Agent": UA } });
     jar.store(loginPage);
-    const { form, action } = buildLoginForm(
-      await loginPage.text(),
-      user,
-      pass,
-    );
-
-    // 2) POST credentials.
-    const postUrl = new URL(action, LOGIN_URL).toString();
-    const loginRes = await fetch(postUrl, {
+    const loginFields = formState(await loginPage.text());
+    loginFields["UsernameTextbox"] = user;
+    loginFields["PasswordTextbox"] = pass;
+    loginFields["LoginButton"] = "Login";
+    const loginRes = await fetch(`${BASE}/login.aspx`, {
       method: "POST",
       redirect: "manual",
       headers: {
@@ -146,46 +139,69 @@ export const scrapeResults = onCall(
         Cookie: jar.header(),
         Referer: LOGIN_URL,
       },
-      body: new URLSearchParams(form).toString(),
+      body: new URLSearchParams(loginFields).toString(),
     });
     jar.store(loginRes);
 
-    const redirected =
-      loginRes.status >= 300 && loginRes.status < 400;
-    // 3) Follow to the landing/results page.
-    const landingUrl = redirected
-      ? new URL(loginRes.headers.get("location") ?? "/", BASE).toString()
-      : BASE + "/";
-    const landing = await fetch(landingUrl, {
-      headers: { "User-Agent": UA, Cookie: jar.header() },
-    });
-    jar.store(landing);
-    const html = await landing.text();
-    const $ = cheerio.load(html);
+    let html = await (
+      await fetch(`${BASE}/`, { headers: { "User-Agent": UA, Cookie: jar.header() } }).then(
+        (r) => {
+          jar.store(r);
+          return r;
+        },
+      )
+    ).text();
 
-    const loggedIn = !/login\.aspx/i.test(landing.url) &&
-      $("#runGridView").length + $("#yearDropDown").length > 0;
-
-    if (!loggedIn) {
-      throw new HttpsError(
-        "permission-denied",
-        "Login appears to have failed (no results page returned). Check credentials.",
-      );
+    if (!/runGridView|yearDropDown/.test(html)) {
+      throw new HttpsError("permission-denied", "Login failed; check credentials.");
     }
 
-    const dropdowns = {
-      year: parseDropdown($, "yearDropDown"),
-      eventType: parseDropdown($, "eventTypeDropDown"),
-      event: parseDropdown($, "divEventRaceDropDown"),
-      categoryRound: parseDropdown($, "categoryRoundDropDown"),
-    };
-    const grid = parseRunGrid($);
+    // Generic postback that sets a control's value and triggers its change.
+    async function postback(target: string, value: string): Promise<void> {
+      const fields = formState(html);
+      fields[target] = value;
+      fields["__EVENTTARGET"] = target;
+      fields["__EVENTARGUMENT"] = "";
+      const res = await fetch(POST_URL, {
+        method: "POST",
+        headers: {
+          "User-Agent": UA,
+          "Content-Type": "application/x-www-form-urlencoded",
+          Cookie: jar.header(),
+          Referer: `${BASE}/`,
+        },
+        body: new URLSearchParams(fields).toString(),
+      });
+      jar.store(res);
+      html = await res.text();
+    }
 
-    return {
-      loggedIn: true,
-      landingUrl: landing.url,
-      dropdowns,
-      grid,
+    // 2) Drive the cascade as far as the selection allows.
+    if (sel.year) await postback("yearDropDown", sel.year);
+    if (sel.year || sel.eventType) await postback("eventTypeDropDown", sel.eventType);
+    if (sel.event) await postback("divEventRaceDropDown", sel.event);
+    if (sel.date) await postback("dateDropDown", sel.date);
+    if (sel.category) await postback("categoryRoundDropDown", sel.category);
+
+    const result: {
+      years: Option[];
+      eventTypes: Option[];
+      events: Option[];
+      dates: Option[];
+      categories: Option[];
+      grid?: { headers: string[]; rows: Record<string, string>[] };
+      selection: typeof sel;
+    } = {
+      years: dropdown(html, "yearDropDown"),
+      eventTypes: dropdown(html, "eventTypeDropDown"),
+      events: dropdown(html, "divEventRaceDropDown"),
+      dates: dropdown(html, "dateDropDown"),
+      categories: dropdown(html, "categoryRoundDropDown"),
+      selection: sel,
     };
+
+    if (sel.category) result.grid = parseGrid(html);
+
+    return result;
   },
 );

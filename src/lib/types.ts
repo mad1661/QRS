@@ -79,3 +79,38 @@ export interface EntryDoc {
 
 export type NewEntry = Pick<EntryDoc, "classCode" | "carNumber" | "driverName"> &
   Partial<Pick<EntryDoc, "points" | "seed">>;
+
+/**
+ * A single run result, at `events/{eventId}/runs/{runId}`.
+ * Doc id is `${classCode}_${session}_${carNumber}` so re-imports are idempotent.
+ */
+export interface RunDoc {
+  id: string;
+  classCode: string;
+  /** Session number (Q1 -> 1, Q2 -> 2, ...). */
+  session: number;
+  carNumber: string;
+  driverName: string;
+  lane: string;
+  /** Reaction time. */
+  rt: number | null;
+  ft60: number | null;
+  ft330: number | null;
+  ft660: number | null;
+  mph660: number | null;
+  ft1000: number | null;
+  mph1000: number | null;
+  ft1320: number | null;
+  mph1320: number | null;
+  dialIn: number | null;
+  isDQ: boolean;
+  /** Source: 'scraped' | 'manual'. */
+  source: string;
+  /** Original portal category label. */
+  category: string;
+  timestamp: string;
+  createdAt: Stamp;
+  updatedAt: Stamp;
+}
+
+export type NewRun = Omit<RunDoc, "id" | "createdAt" | "updatedAt">;

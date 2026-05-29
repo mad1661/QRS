@@ -5,6 +5,7 @@ import { CenteredMessage } from "../components/CenteredMessage.tsx";
 import { ClassPanel } from "../components/ClassPanel.tsx";
 import { CLASS_BY_CODE, CLASSES } from "../lib/classes.ts";
 import { subscribeEvent, updateEvent } from "../lib/store.ts";
+import { ResultsPanel } from "../components/ResultsPanel.tsx";
 import type { EventDoc } from "../lib/types.ts";
 
 export function Editor() {
@@ -12,6 +13,7 @@ export function Editor() {
   const [event, setEvent] = useState<EventDoc | null | undefined>(undefined);
   const [selected, setSelected] = useState<string | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
+  const [mode, setMode] = useState<"setup" | "results">("setup");
 
   async function toggleClass(code: string, on: boolean) {
     if (!eventId || !event) return;
@@ -68,15 +70,39 @@ export function Editor() {
               {event.year} · {event.enabledClasses.length} classes
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setManageOpen((v) => !v)}
-            className="shrink-0 rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
-          >
-            {manageOpen ? "Done" : "Manage classes"}
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="inline-flex overflow-hidden rounded-lg border border-slate-700 text-sm">
+              {(["setup", "results"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMode(m)}
+                  className={`px-3 py-1.5 capitalize ${
+                    mode === m
+                      ? "bg-sky-600 text-white"
+                      : "text-slate-300 hover:bg-slate-800"
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+            {mode === "setup" && (
+              <button
+                type="button"
+                onClick={() => setManageOpen((v) => !v)}
+                className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+              >
+                {manageOpen ? "Done" : "Manage classes"}
+              </button>
+            )}
+          </div>
         </div>
 
+        {mode === "results" ? (
+          <ResultsPanel eventId={eventId} event={event} />
+        ) : (
+          <>
         {manageOpen && (
           <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
             <p className="mb-3 text-xs text-slate-400">
@@ -145,6 +171,8 @@ export function Editor() {
             </p>
           )}
         </div>
+          </>
+        )}
       </main>
     </div>
   );

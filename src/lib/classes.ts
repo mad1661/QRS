@@ -57,6 +57,34 @@ export const CLASS_BY_CODE: Record<string, ClassConfig> = Object.fromEntries(
   CLASSES.map((c) => [c.code, c]),
 );
 
+/**
+ * Maps getresults.nhradata.com category labels (uppercase) to our class codes.
+ * Used to route scraped run grids to the right class.
+ */
+export const NHRA_CATEGORY_TO_CODE: Record<string, string> = {
+  "TOP FUEL": "TF",
+  "FUNNY CAR": "FC",
+  "PRO STOCK": "PS",
+  "PRO STOCK MOTORCYCLE": "PSM",
+  "PRO MOD": "PM",
+  "PRO MODIFIED": "PM",
+  "FACTORY X": "FX",
+  "TOP ALCOHOL DRAGSTER": "TAD",
+  "TOP ALCOHOL FUNNY CAR": "TAFC",
+  "COMPETITION ELIMINATOR": "COMP",
+  "TOP DRAGSTER": "TD",
+  "TOP SPORTSMAN": "TS",
+  "FACTORY STOCK SHOWDOWN": "FSS",
+  "TOP FUEL HARLEY": "TFM",
+  "TOP FUEL MOTORCYCLE": "TFM",
+  "MOUNTAIN MOTOR PRO STOCK": "MMPS",
+};
+
+/** Best-effort: map a category label to a class code (case-insensitive). */
+export function categoryToCode(category: string): string | undefined {
+  return NHRA_CATEGORY_TO_CODE[category.trim().toUpperCase()];
+}
+
 export function laneRotation(
   group: LaneGroup,
   sessions: number,
