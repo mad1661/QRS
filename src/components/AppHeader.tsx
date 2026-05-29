@@ -15,9 +15,12 @@ export function AppHeader() {
         </Link>
         <div className="flex items-center gap-3 text-sm">
           {isSuperAdmin && (
-            <span className="rounded-full bg-sky-500/15 px-2.5 py-0.5 text-xs font-medium text-sky-300">
+            <Link
+              to="/admin"
+              className="rounded-full bg-sky-500/15 px-2.5 py-0.5 text-xs font-medium text-sky-300 hover:bg-sky-500/25"
+            >
               Admin
-            </span>
+            </Link>
           )}
           <span className="hidden text-slate-400 sm:inline">{user?.email}</span>
           <button

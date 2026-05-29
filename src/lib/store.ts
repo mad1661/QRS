@@ -15,11 +15,13 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import { CLASSES } from "./classes";
+import type { AccountStatus } from "./constants";
 import type {
   EntryDoc,
   EventDoc,
   NewEntry,
   NewEvent,
+  UserDoc,
 } from "./types";
 
 const DEFAULT_SESSIONS = 4;
@@ -218,6 +220,38 @@ export async function replaceClassEntries(
   );
   await Promise.all(existing.docs.map((d) => deleteDoc(d.ref)));
   await addEntries(eventId, entries);
+}
+
+// ---------- Users (superadmin approval) ----------
+
+export function subscribeUsers(
+  cb: (users: UserDoc[]) => void,
+  onError?: (err: Error) => void,
+): Unsubscribe {
+  return onSnapshot(
+    collection(db, "users"),
+    (snap) =>
+      cb(
+        snap.docs.map((d) => {
+          const data = d.data();
+          return {
+            uid: d.id,
+            email: (data.email as string | null) ?? null,
+            displayName: (data.displayName as string | null) ?? null,
+            status: (data.status as AccountStatus) ?? "pending",
+            createdAt: (data.createdAt as UserDoc["createdAt"]) ?? null,
+          };
+        }),
+      ),
+    (err) => onError?.(err),
+  );
+}
+
+export async function setUserStatus(
+  uid: string,
+  status: AccountStatus,
+): Promise<void> {
+  await updateDoc(doc(db, "users", uid), { status });
 }
 
 /** Used by event creation when a custom id is desired (e.g. seeding/tests). */

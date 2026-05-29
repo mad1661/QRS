@@ -14,4 +14,5 @@ import { initializeApp } from "firebase-admin/app";
 
 initializeApp();
 
-// Functions are exported here as they are implemented.
+export { scrapePoints } from "./scrapePoints.js";
+export { scrapeResults } from "./scrapeResults.js";

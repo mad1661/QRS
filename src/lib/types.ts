@@ -1,7 +1,34 @@
 import type { Timestamp } from "firebase/firestore";
+import type { AccountStatus } from "./constants";
 
 /** A timestamp that may be a Firestore Timestamp (read) or undefined (pre-write). */
 export type Stamp = Timestamp | null;
+
+/** A user profile / approval record at `users/{uid}`. */
+export interface UserDoc {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  status: AccountStatus;
+  createdAt: Stamp;
+}
+
+/** One driver's standing row, parsed from NHRA.com. */
+export interface StandingRow {
+  position: number;
+  driver: string;
+  points: number;
+  vehicle: string;
+}
+
+/** A scraped standings doc at `standings/{year}_{classCode}`. */
+export interface StandingsDoc {
+  year: number;
+  classCode: string;
+  rows: StandingRow[];
+  source: string;
+  scrapedAt: Stamp;
+}
 
 /**
  * An event = one race weekend. Document at `events/{eventId}`.

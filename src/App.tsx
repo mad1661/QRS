@@ -4,6 +4,7 @@ import { SignIn } from "./routes/SignIn.tsx";
 import { Pending } from "./routes/Pending.tsx";
 import { Dashboard } from "./routes/Dashboard.tsx";
 import { Editor } from "./routes/Editor.tsx";
+import { Admin } from "./routes/Admin.tsx";
 
 export function App() {
   return (
@@ -23,6 +24,14 @@ export function App() {
         element={
           <ProtectedRoute>
             <Editor />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute>
+            <Admin />
           </ProtectedRoute>
         }
       />

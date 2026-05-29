@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import {
   addEntry,
   deleteEntry,
+  replaceClassEntries,
   subscribeClassEntries,
   updateEntry,
   updateEvent,
 } from "../lib/store.ts";
 import { CLASS_BY_CODE, laneRotation } from "../lib/classes.ts";
+import { STANDINGS_CLASSES, scrapePoints } from "../lib/functions.ts";
 import type { EntryDoc, EventDoc } from "../lib/types.ts";
 import { ImportEntries } from "./ImportEntries.tsx";
 
@@ -38,6 +40,44 @@ export function ClassPanel({ eventId, event, classCode }: Props) {
   const [carNumber, setCarNumber] = useState("");
   const [driverName, setDriverName] = useState("");
   const [points, setPoints] = useState("");
+  const [seeding, setSeeding] = useState(false);
+
+  const canSeed = (STANDINGS_CLASSES as readonly string[]).includes(classCode);
+
+  async function handleSeed() {
+    if (
+      entries.length > 0 &&
+      !window.confirm(
+        `Replace all ${classCode} entries with the ${event.year} NHRA standings order?`,
+      )
+    )
+      return;
+    setSeeding(true);
+    setError(null);
+    try {
+      const { results } = await scrapePoints(event.year, [classCode]);
+      const rows = results[classCode] ?? [];
+      if (rows.length === 0) {
+        setError("Standings returned no drivers.");
+        return;
+      }
+      await replaceClassEntries(
+        eventId,
+        classCode,
+        rows.map((r) => ({
+          classCode,
+          carNumber: "",
+          driverName: r.driver,
+          points: r.points,
+          seed: r.position,
+        })),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Seeding failed");
+    } finally {
+      setSeeding(false);
+    }
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -114,6 +154,16 @@ export function ClassPanel({ eventId, event, classCode }: Props) {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {canSeed && (
+            <button
+              type="button"
+              onClick={handleSeed}
+              disabled={seeding}
+              className="rounded-lg border border-sky-700 bg-sky-600/20 px-3 py-1.5 text-xs font-semibold text-sky-200 hover:bg-sky-600/30 disabled:opacity-50"
+            >
+              {seeding ? "Seeding…" : "Seed from standings"}
+            </button>
+          )}
           <label className="text-xs text-slate-400">
             Sessions
             <select
