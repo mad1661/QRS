@@ -1,0 +1,70 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Bootstrap admins. Keep in sync with SUPERADMIN_EMAILS in the app/functions.
+    function superAdminEmails() {
+      return [
+        'REPLACE_WITH_SUPERADMIN_EMAIL'
+      ];
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn()
+        && request.auth.token.email != null
+        && request.auth.token.email in superAdminEmails();
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isApproved() {
+      return isSignedIn()
+        && (isSuperAdmin()
+            || (exists(/databases/$(database)/documents/users/$(request.auth.uid))
+                && userDoc().status == 'approved'));
+    }
+
+    // User profiles / approval flow.
+    match /users/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isSuperAdmin());
+
+      // A user may create only their own doc, and only as 'pending'
+      // (or pre-approved by a superadmin via invite, handled server-side).
+      allow create: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.status == 'pending';
+
+      // Users can update non-privileged fields on their own doc but not flip status.
+      allow update: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.status == resource.data.status;
+
+      // Only superadmins approve/deny or delete accounts.
+      allow update, delete: if isSuperAdmin();
+    }
+
+    // Event/run data: approved users can read and write for now.
+    // Tighten to per-event owner/editor lists in a later phase.
+    match /events/{eventId} {
+      allow read, write: if isApproved();
+
+      match /{sub=**} {
+        allow read, write: if isApproved();
+      }
+    }
+
+    // Scraped season standings used to seed Q1 order.
+    match /standings/{classId} {
+      allow read: if isApproved();
+      // Written by Cloud Functions (admin SDK bypasses rules); deny client writes.
+      allow write: if false;
+    }
+  }
+}
