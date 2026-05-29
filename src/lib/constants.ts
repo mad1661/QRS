@@ -1,6 +1,6 @@
 // Bootstrap admins. Keep in sync with superAdminEmails() in firestore.rules.
 export const SUPERADMIN_EMAILS: readonly string[] = [
-  "REPLACE_WITH_SUPERADMIN_EMAIL",
+  "mad1661@gmail.com",
 ];
 
 export function isSuperAdminEmail(email: string | null | undefined): boolean {

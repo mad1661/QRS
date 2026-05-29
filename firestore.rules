@@ -6,7 +6,7 @@ service cloud.firestore {
     // Bootstrap admins. Keep in sync with SUPERADMIN_EMAILS in the app/functions.
     function superAdminEmails() {
       return [
-        'REPLACE_WITH_SUPERADMIN_EMAIL'
+        'mad1661@gmail.com'
       ];
     }
 
