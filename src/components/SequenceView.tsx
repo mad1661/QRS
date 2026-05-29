@@ -43,8 +43,12 @@ export function SequenceView({
 }: Props) {
   const strict = STRICT_ALTERNATION.has(classCode);
   const [conditionalThird, setConditionalThird] = useState<Lane>("L");
-  const [q1LeaderLane, setQ1LeaderLane] = useState<Lane>("L");
+  const [q1LeaderLane, setQ1LeaderLane] = useState<Lane>("R");
   const showThirdToggle = !strict && group === "B" && sessions === 3;
+
+  // Only show sessions that have been run, plus the next one to generate.
+  const maxRun = runs.reduce((m, r) => (r.session > m ? r.session : m), 0);
+  const visibleCount = Math.max(1, Math.min(sessions, maxRun + 1));
 
   const plans = useMemo(
     () =>
@@ -55,8 +59,18 @@ export function SequenceView({
         finishDistance: finishDistance === 1000 ? 1000 : 1320,
         q1LeaderLane,
         conditionalThird,
-      }),
-    [entries, runs, classCode, group, sessions, finishDistance, q1LeaderLane, conditionalThird],
+      }).slice(0, visibleCount),
+    [
+      entries,
+      runs,
+      classCode,
+      group,
+      sessions,
+      finishDistance,
+      q1LeaderLane,
+      conditionalThird,
+      visibleCount,
+    ],
   );
 
   if (entries.length === 0) {

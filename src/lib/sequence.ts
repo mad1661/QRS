@@ -1,6 +1,5 @@
 import type { Lane, LaneGroup } from "./classes";
 import { laneRotation } from "./classes";
-import { computeLiveOrder } from "./results";
 import type { EntryDoc } from "./types";
 
 /**
@@ -93,22 +92,65 @@ export function orderEntries(entries: EntryDoc[]): SeqCompetitor[] {
   return toCompetitors([...entries].sort(seedCompare));
 }
 
+/** Normalize a driver name for matching (handles "Last, First", case, punctuation). */
+export function normalizeName(s: string): string {
+  let t = (s || "").trim().toLowerCase();
+  if (t.includes(",")) {
+    const [last, first] = t.split(",");
+    t = `${(first ?? "").trim()} ${(last ?? "").trim()}`;
+  }
+  return t.replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+/** Best (lowest) ET per car number and per driver name within a set of runs. */
+function bestEtMaps(
+  runs: SeqRun[],
+  finishDistance: 1000 | 1320,
+): { byCar: Map<string, number>; byName: Map<string, number> } {
+  const etKey = finishDistance === 1000 ? "ft1000" : "ft1320";
+  const byCar = new Map<string, number>();
+  const byName = new Map<string, number>();
+  for (const r of runs) {
+    if (r.isDQ) continue;
+    const et = r[etKey] as number | null;
+    if (et == null || !(et > 0)) continue;
+    const car = (r.carNumber || "").trim();
+    if (car) {
+      const cur = byCar.get(car);
+      if (cur == null || et < cur) byCar.set(car, et);
+    }
+    const nm = normalizeName(r.driverName);
+    if (nm) {
+      const cur = byName.get(nm);
+      if (cur == null || et < cur) byName.set(nm, et);
+    }
+  }
+  return { byCar, byName };
+}
+
 /**
- * Order entries by their best ET within `runsSubset` (quickest first). Cars
- * with no valid time in the subset fall to the bottom in seed/points order.
+ * Order entries by their best ET within `runsSubset` (quickest first). Runs are
+ * matched to entries by car number, then by driver name (entries seeded from
+ * standings often have no car number). Cars with no valid time fall to the
+ * bottom in seed/points order.
  */
 function orderByResults(
   entries: EntryDoc[],
   runsSubset: SeqRun[],
   finishDistance: 1000 | 1320,
 ): SeqCompetitor[] {
-  const live = computeLiveOrder(runsSubset, finishDistance);
-  const etByCar = new Map<string, number>();
-  for (const r of live) if (r.bestEt != null) etByCar.set(r.carNumber, r.bestEt);
+  const { byCar, byName } = bestEtMaps(runsSubset, finishDistance);
+  const etFor = (e: EntryDoc): number | undefined => {
+    const car = (e.carNumber || "").trim();
+    if (car && byCar.has(car)) return byCar.get(car);
+    const nm = normalizeName(e.driverName);
+    if (nm && byName.has(nm)) return byName.get(nm);
+    return undefined;
+  };
 
   const sorted = [...entries].sort((a, b) => {
-    const ea = a.carNumber ? etByCar.get(a.carNumber) : undefined;
-    const eb = b.carNumber ? etByCar.get(b.carNumber) : undefined;
+    const ea = etFor(a);
+    const eb = etFor(b);
     if (ea != null && eb != null) return ea - eb;
     if (ea != null) return -1;
     if (eb != null) return 1;
@@ -185,7 +227,7 @@ export function generateSequence(
     group,
     sessions,
     finishDistance,
-    q1LeaderLane = "L",
+    q1LeaderLane = "R",
     conditionalThird = "L",
   } = opts;
   const strict = STRICT_ALTERNATION.has(classCode);
