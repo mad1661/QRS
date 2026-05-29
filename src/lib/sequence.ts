@@ -82,14 +82,18 @@ export function orderEntries(entries: EntryDoc[]): SeqCompetitor[] {
   }));
 }
 
-/** Normalize a driver name for matching ("Last, First", case, punctuation). */
+/**
+ * Normalize a driver name for matching. Handles "Last, First" order, case, and
+ * punctuation, and strips ALL non-alphanumerics (including spaces) so initials
+ * match regardless of dots/spacing, e.g. "J.R. Todd" == "JR Todd" -> "jrtodd".
+ */
 export function normalizeName(s: string): string {
   let t = (s || "").trim().toLowerCase();
   if (t.includes(",")) {
     const [last, first] = t.split(",");
     t = `${(first ?? "").trim()} ${(last ?? "").trim()}`;
   }
-  return t.replace(/[^a-z0-9]+/g, " ").trim();
+  return t.replace(/[^a-z0-9]+/g, "");
 }
 
 /** Finish ET for a run: ft1320 if present (portal default), else ft1000. */

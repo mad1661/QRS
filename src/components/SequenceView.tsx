@@ -20,14 +20,6 @@ function Car({ c, lane }: { c: SeqCompetitor | null; lane: Lane }) {
   if (!c) return <span className="text-slate-600">— bye —</span>;
   return (
     <span>
-      {c.qpos != null && (
-        <span
-          className="mr-2 inline-block min-w-5 rounded bg-slate-800 px-1 text-center font-mono text-xs text-sky-300"
-          title="Qualifying position (1 = quickest)"
-        >
-          {c.qpos}
-        </span>
-      )}
       <span
         className={`mr-2 inline-block w-4 text-center font-mono text-xs ${
           lane === "L" ? "text-emerald-400" : "text-amber-400"
@@ -140,9 +132,8 @@ export function SequenceView({
       </div>
 
       <p className="text-xs text-slate-500">
-        Cars are ranked by the basis session (blue # = qualifying position, 1 =
-        quickest) and paired in order (#1+#2, #3+#4, …); the quickest pair runs
-        last.
+        Each later session is ranked by the basis session's ET (quickest first),
+        paired in order (1+2, 3+4, …); the quickest pair runs last.
       </p>
 
       <div className="grid gap-4 md:grid-cols-2">
