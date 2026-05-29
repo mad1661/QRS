@@ -2,19 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import {
   addEntry,
   deleteEntry,
-  replaceClassEntries,
   subscribeClassEntries,
   subscribeClassRuns,
   updateEntry,
   updateEvent,
 } from "../lib/store.ts";
 import { CLASS_BY_CODE, laneRotation } from "../lib/classes.ts";
-import { STANDINGS_CLASSES, scrapePoints } from "../lib/functions.ts";
+import { STANDINGS_CLASSES } from "../lib/functions.ts";
 import { computeLiveOrder } from "../lib/results.ts";
 import type { EntryDoc, EventDoc, RunDoc } from "../lib/types.ts";
 import { ImportEntries } from "./ImportEntries.tsx";
 import { SequenceView } from "./SequenceView.tsx";
 import { LiveOrder } from "./LiveOrder.tsx";
+import { SeedFromStandings } from "./SeedFromStandings.tsx";
 
 interface Props {
   eventId: string;
@@ -44,7 +44,7 @@ export function ClassPanel({ eventId, event, classCode }: Props) {
   const [carNumber, setCarNumber] = useState("");
   const [driverName, setDriverName] = useState("");
   const [points, setPoints] = useState("");
-  const [seeding, setSeeding] = useState(false);
+  const [showSeed, setShowSeed] = useState(false);
   const [view, setView] = useState<"entries" | "sequence">("entries");
   const [runs, setRuns] = useState<RunDoc[]>([]);
 
@@ -54,41 +54,6 @@ export function ClassPanel({ eventId, event, classCode }: Props) {
   }, [eventId, classCode]);
 
   const canSeed = (STANDINGS_CLASSES as readonly string[]).includes(classCode);
-
-  async function handleSeed() {
-    if (
-      entries.length > 0 &&
-      !window.confirm(
-        `Replace all ${classCode} entries with the ${event.year} NHRA standings order?`,
-      )
-    )
-      return;
-    setSeeding(true);
-    setError(null);
-    try {
-      const { results } = await scrapePoints(event.year, [classCode]);
-      const rows = results[classCode] ?? [];
-      if (rows.length === 0) {
-        setError("Standings returned no drivers.");
-        return;
-      }
-      await replaceClassEntries(
-        eventId,
-        classCode,
-        rows.map((r) => ({
-          classCode,
-          carNumber: "",
-          driverName: r.driver,
-          points: r.points,
-          seed: r.position,
-        })),
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Seeding failed");
-    } finally {
-      setSeeding(false);
-    }
-  }
 
   useEffect(() => {
     setLoading(true);
@@ -170,6 +135,15 @@ export function ClassPanel({ eventId, event, classCode }: Props) {
 
   return (
     <div className="space-y-5">
+      {showSeed && (
+        <SeedFromStandings
+          eventId={eventId}
+          classCode={classCode}
+          year={event.year}
+          existingCount={entries.length}
+          onClose={() => setShowSeed(false)}
+        />
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
         <div>
           <h2 className="text-lg font-semibold text-slate-100">{cfg.name}</h2>
@@ -182,11 +156,10 @@ export function ClassPanel({ eventId, event, classCode }: Props) {
           {canSeed && (
             <button
               type="button"
-              onClick={handleSeed}
-              disabled={seeding}
-              className="rounded-lg border border-sky-700 bg-sky-600/20 px-3 py-1.5 text-xs font-semibold text-sky-200 hover:bg-sky-600/30 disabled:opacity-50"
+              onClick={() => setShowSeed(true)}
+              className="rounded-lg border border-sky-700 bg-sky-600/20 px-3 py-1.5 text-xs font-semibold text-sky-200 hover:bg-sky-600/30"
             >
-              {seeding ? "Seeding…" : "Seed from standings"}
+              Seed from standings
             </button>
           )}
           <label className="text-xs text-slate-400">
@@ -294,8 +267,8 @@ export function ClassPanel({ eventId, event, classCode }: Props) {
         <p className="text-sm text-slate-400">Loading entries…</p>
       ) : entries.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-slate-800 bg-slate-900/40 p-8 text-center text-sm text-slate-400">
-          No entries yet. Add competitors above, import a file, or seed from
-          standings (coming soon).
+          No entries yet. Add competitors above, import a file, or use
+          {canSeed ? " “Seed from standings”" : " a results import"} to pick who's racing.
         </p>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-800">
