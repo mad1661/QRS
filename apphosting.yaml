@@ -1,0 +1,36 @@
+# Firebase App Hosting config. App Hosting runs `npm run build` then `npm start`
+# (superstatic serves dist/ using the hosting block in firebase.json, incl. the
+# SPA rewrite). The VITE_FIREBASE_* values are the public web app config (not
+# secrets) and must be present at BUILD time so vite inlines them.
+
+runConfig:
+  minInstances: 0
+  maxInstances: 1
+  cpu: 1
+  memoryMiB: 512
+
+env:
+  - variable: VITE_FIREBASE_API_KEY
+    value: AIzaSyCKG4O2hTvYm8zi95Z5BI3SwHWUjL_nHc0
+    availability:
+      - BUILD
+  - variable: VITE_FIREBASE_AUTH_DOMAIN
+    value: nhra-qrs.firebaseapp.com
+    availability:
+      - BUILD
+  - variable: VITE_FIREBASE_PROJECT_ID
+    value: nhra-qrs
+    availability:
+      - BUILD
+  - variable: VITE_FIREBASE_STORAGE_BUCKET
+    value: nhra-qrs.firebasestorage.app
+    availability:
+      - BUILD
+  - variable: VITE_FIREBASE_MESSAGING_SENDER_ID
+    value: "852097622101"
+    availability:
+      - BUILD
+  - variable: VITE_FIREBASE_APP_ID
+    value: 1:852097622101:web:a26f4170955f2dfa6174dc
+    availability:
+      - BUILD
